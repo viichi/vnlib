@@ -1,0 +1,6 @@
+[package]
+name = "vnbase"
+version = "0.1.0"
+authors = ["wayne"]
+
+[dependencies]
