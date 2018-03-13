@@ -5,6 +5,27 @@ use std::time::{Instant, Duration};
 
 use super::core::{TimedAction, TimedActionNode};
 
+/// 周期历程
+/// 
+/// # Examples
+/// ```
+/// use vnbase::run_loop;
+/// use std::time::Duration;
+/// 
+/// let mut time = Duration::default();
+/// 
+/// let _schedule = run_loop::new_schedule()
+///     .with_period(Duration::from_millis(100))
+///     .with_callback(move |dt| {
+///         time += dt;
+///         if time >= Duration::from_secs(1) {
+///             run_loop::stop();
+///         }
+///     })
+///     .and_start();
+/// 
+/// run_loop::run();
+/// ```
 pub struct Schedule {
     data: Rc<Data>,
     cancel_on_drop: Cell<bool>,

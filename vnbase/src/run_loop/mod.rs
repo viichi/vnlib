@@ -1,4 +1,32 @@
 
+//! 消息循环，包含：函数投递，定时器，周期历程，循环内对象
+//! 
+//! # Examples
+//! 
+//! ```
+//! use std::thread;
+//! use std::io;
+//! use vnbase::run_loop;
+//! 
+//! // 获得当前线程的循环句柄
+//! let handle = run_loop::clone_handle();
+//! 
+//! let th = thread::spawn(move || {
+//!     let mut sth = String::new();
+//!     println!("Input something:");
+//!     io::stdin().read_line(&mut sth).unwrap();
+//! 
+//!     // 通过句柄投递函数
+//!     handle.post(move || {
+//!         println!("Your input: {}", sth);
+//!         run_loop::stop();
+//!     });
+//! });
+//! 
+//! run_loop::run(); // 消息循环
+//! 
+//! th.join().unwrap();
+//! ```
 mod core;
 mod timer;
 mod schedule;
@@ -18,16 +46,25 @@ use std::time::{Duration, Instant};
 use std::cell::RefCell;
 use std::rc::Rc;
 
+/// 消息循环句柄
+/// 
+/// ```
+/// use vnbase::run_loop;
+/// 
+/// let handle = run_loop::clone_handle();
+/// ```
 #[derive(Clone)]
 pub struct Handle {
     core: Arc<Core>,
 }
 
 impl Handle {
+    /// 向循环投递一个函数，该函数会在循环所在的线程执行
     pub fn post<T>(&self, msg: T) where T: FnOnce() + 'static + Send {
         self.core.post(msg);
     }
 
+    /// 使循环立即退出
     pub fn stop(&self) {
         self.core.stop();
     }
@@ -93,13 +130,14 @@ thread_local! {
      };
 }
 
-
+/// 使当前线程的消息循环退出
 pub fn stop() {
     RUN_LOOP.with(|rl| {
         rl.core.stop();
     })
 }
 
+/// 在当前线程开始消息循环
 pub fn run() {
     RUN_LOOP.with(|rl| {
         let mut msgs = rl.core.msgs.lock().unwrap();
@@ -166,6 +204,7 @@ pub fn run() {
     })
 }
 
+/// 获得当前线程的循环句柄
 pub fn clone_handle() -> Handle {
     RUN_LOOP.with(|rl| {
         Handle {
@@ -174,18 +213,59 @@ pub fn clone_handle() -> Handle {
     })
 }
 
+/// 判断 handle 是否是当前线程的循环句柄
 pub fn is_own_handle(handle: &Handle) -> bool {
     RUN_LOOP.with(|rl| Arc::ptr_eq(&rl.core, &handle.core))
 }
 
+/// 在当前线程创建定时器
 pub fn new_timer() -> Timer {
     Timer::new()
 }
 
+/// 在当前线程创建周期历程
 pub fn new_schedule() -> Schedule {
     Schedule::new()
 }
 
+/// 在当前线程创建循环内对象
+///
+/// # Examples
+/// ```
+/// use vnbase::run_loop;
+/// use std::thread;
+/// 
+/// trait MyObj {
+///     fn say_hello(&self);
+/// }
+/// 
+/// struct MOA (i32);
+/// impl MyObj for MOA {
+///     fn say_hello(&self) {
+///         println!("MOA: {}", self.0);
+///     }
+/// }
+/// struct MOB (String);
+/// impl MyObj for MOB {
+///     fn say_hello(&self) {
+///         println!("MOB: {}", self.0);
+///     }
+/// }
+/// 
+/// let mut objs: Vec<run_loop::ObjectHandle<Box<MyObj>>> = Vec::new();
+/// objs.push(run_loop::new_object(Box::new(MOA(100))));
+/// objs.push(run_loop::new_object(Box::new(MOB("Hello".to_string()))));
+/// 
+/// let handle = run_loop::clone_handle();
+/// let th = thread::spawn(move || {
+///     for obj in objs.iter() {
+///         obj.post(|obj| obj.say_hello());
+///     }
+///     handle.post(run_loop::stop);
+/// });
+/// run_loop::run();
+/// th.join().unwrap();
+/// ```
 pub fn new_object<T>(obj: T) -> ObjectHandle<T> where T: 'static {
     RUN_LOOP.with(move |rl| {
         rl.objects.borrow_mut().create(obj)

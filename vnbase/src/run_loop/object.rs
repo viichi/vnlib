@@ -13,7 +13,7 @@ pub trait Object {
     fn get_prev(&self) -> Option<*mut Object>;
 }
 
-struct ObjectNode<T: 'static + ?Sized> {
+struct ObjectNode<T: 'static> {
     handle: *mut ObjH<T>,
     next: Option<*mut Object>,
     prev: Option<*mut Object>,
@@ -67,10 +67,10 @@ impl ObjectList {
         where T: 'static {
         unsafe {
             let node = Box::new(ObjectNode {
-                obj: obj,
                 handle: mem::uninitialized(),
                 next: self.head,
-                prev: None
+                prev: None,
+                obj: obj,
             });
 
             let node = Box::into_raw(node);
@@ -110,6 +110,31 @@ impl ObjectList {
     }
 }
 
+/// 循环内对象句柄，部分特征和std::sync::Arc类似
+/// 
+/// # Examples
+/// ```
+/// use vnbase::run_loop;
+/// use std::thread;
+/// 
+/// struct MyObject ();
+/// impl MyObject {
+///     fn say_hello(&self) {
+///         println!("Hello");
+///     }
+/// }
+/// 
+/// let obj = run_loop::new_object(MyObject ());
+/// 
+/// let handle = run_loop::clone_handle();
+/// let th = thread::spawn(move || {
+///     obj.post(MyObject::say_hello);
+///     handle.post(run_loop::stop);
+/// });
+/// 
+/// run_loop::run();
+/// th.join().unwrap();
+/// ```
 pub struct ObjectHandle<T: 'static> {
     core: super::Handle,
     handle: *mut ObjH<T>,
@@ -192,7 +217,7 @@ impl<T> ObjectHandle<T> {
 
 const MAX_REFCOUNT: usize = isize::MAX as usize;
 
-struct ObjH<T: 'static + ?Sized> {
+struct ObjH<T: 'static> {
     ptr: *mut ObjectNode<T>,
     strong: AtomicUsize,
     weak: AtomicUsize,
@@ -236,10 +261,34 @@ impl<T> ObjH<T> {
     }
 }
 
-struct ObjectNodePtr<T: 'static + ?Sized> (*mut ObjectNode<T>);
+struct ObjectNodePtr<T: 'static> (*mut ObjectNode<T>);
 
 unsafe impl<T> Send for ObjectNodePtr<T> {}
 
+/// 循环内对象句柄的弱引用，部分特征和std::sync::Weak类似
+/// 
+/// # Examples
+/// ```
+/// use vnbase::run_loop;
+/// use std::thread;
+/// 
+/// struct MyObject ();
+/// 
+/// let obj = run_loop::new_object(MyObject ());
+/// let obj_weak = obj.downgrade();
+/// drop(obj);
+/// 
+/// let handle = run_loop::clone_handle();
+/// let th = thread::spawn(move || {
+///     if let Some(_) = obj_weak.upgrade() {
+///         unreachable!();
+///     }
+///     handle.post(run_loop::stop);
+/// });
+/// 
+/// run_loop::run();
+/// th.join().unwrap();
+/// ```
 pub struct ObjectWeak<T: 'static> {
     core: super::Handle,
     handle: *mut ObjH<T>,

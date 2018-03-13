@@ -5,6 +5,23 @@ use std::time::{Instant, Duration};
 
 use super::core::{TimedAction, TimedActionNode};
 
+/// 定时器
+/// 
+/// # Examples
+/// ```
+/// use vnbase::run_loop;
+/// use std::time::Duration;
+/// 
+/// let _timer = run_loop::new_timer()
+///     .with_callback(|| {
+///         println!("timeout.");
+///         run_loop::stop();
+///     })
+///     .and_start(Duration::from_secs(1));
+/// 
+/// println!("start.");
+/// run_loop::run();
+/// ```
 pub struct Timer {
     data: Rc<Data>,
     cancel_on_drop: Cell<bool>,
